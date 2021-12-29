@@ -31,6 +31,7 @@ spool_width_margin = 10;
 spool_radius_margin = 20;
 side_margin = 0;
 holder_radius = 15;
+holder_hole = 10;
 stop_radius = 20;
 stop_angle = 60;
 support_bevel_side = 10;
@@ -41,21 +42,23 @@ proof_small_width = 10;
 proof_depth = 6;
 proof_wide_depth = 3;
 proof_height = 8 * 4;
-proof_platform = 1.8;
+proof_platform = 2.4;
 proof_distance = 10;
-proof_margin = 5;
+proof_margin = 4;
+proof_base = 48;
 cable_trap_depth = 2;
+
 cable_trap_padding = 5;
 cable_trap_padding_bottom = 10;
 cable_trap_between = 20;
 
-overall_width = 
-    spool_width 
-    + spool_width_margin * 2 
-    + side_margin * 2 
+overall_width =
+    spool_width
+    + spool_width_margin * 2
+    + side_margin * 2
     + spool_arm_thickness;
 
-underneath_height = 
+underneath_height =
     support_bevel_side
     + spool_radius_margin
     + spool_radius;
@@ -64,7 +67,7 @@ cable_trap_width =
     cable_trap_padding * 2
     + pass_inner_radius * 2
     + cable_trap_between;
-    
+
 cable_trap_height =
     cable_trap_padding_bottom
     + cable_trap_padding
@@ -82,8 +85,8 @@ module build() {
     a = sqrt(b * b + c * c);
     alpha = acos(b / a);
     h = (
-        top_arm_thickness 
-        + bottom_arm_thickness 
+        top_arm_thickness
+        + bottom_arm_thickness
         + table_thickness
     );
     w = (h * cos(alpha)) / sqrt(1 - cos(alpha) * cos(alpha));
@@ -93,7 +96,7 @@ module build() {
 
         translate([
             side_margin,
-            top_arm_length / 2 - holder_radius + side_thickness, 
+            top_arm_length / 2 - holder_radius + side_thickness,
             -underneath_height
         ])
         translate([0, holder_radius * 2, 0])
@@ -136,7 +139,7 @@ module cable_trap() {
             cable_trap_depth,
             cable_trap_height
         ]);
-   
+
         translate([
             pass_inner_radius + cable_trap_padding,
             -1,
@@ -148,7 +151,7 @@ module cable_trap() {
             r=pass_inner_radius,
             $fn=100
         );
-       
+
         translate([
             pass_inner_radius + cable_trap_padding + cable_trap_between,
             -1,
@@ -172,37 +175,56 @@ module cable_trap() {
  */
 module proof_holder() {
     union() {
-        translate([proof_margin, proof_margin, 0]) {
-            cube([
-                proof_width,
-                proof_depth + proof_distance,
-                proof_platform
-            ]);
+        translate([
+            (proof_base - (proof_margin * 2 + proof_width)) / 2,
+            0,
+            0
+        ])
+        union() {
+            translate([proof_margin, proof_margin, 0]) {
+                translate([proof_width, proof_depth, proof_platform])
+                rotate([0, 0, 180])
+                union() {
+                    cube([
+                        proof_width,
+                        proof_wide_depth,
+                        proof_height + 1
+                    ]);
 
-            translate([proof_width, proof_depth, proof_platform])
-            rotate([0, 0, 180])
-            union() {
-                cube([
-                    proof_width,
-                    proof_wide_depth,
-                    proof_height + 1
-                ]);
-
-                translate([(proof_width - proof_small_width) / 2, 0, 0])
-                cube([
-                    proof_small_width,
-                    proof_depth,
-                    proof_height + 1
-                ]);
+                    translate([(proof_width - proof_small_width) / 2, 0, 0])
+                    cube([
+                        proof_small_width,
+                        proof_depth,
+                        proof_height + 1
+                    ]);
+                }
             }
         }
 
-        cube([
-            proof_margin * 2 + proof_width,
-            proof_margin + proof_depth,
-            proof_platform
-        ]);
+        proof_arm();
     }
+}
+
+/**
+ * A tiny platform onto which the proof holder stands. It has this particular
+ * trapezoidal shape in order to avoid getting it to touch the belt, which
+ * causes warping.
+ */
+module proof_arm() {
+    x1 = (proof_base - (proof_margin * 2 + proof_width)) / 2;
+    x3 = proof_base;
+    x2 = x3 - x1;
+    y1 = proof_distance + proof_depth + proof_margin;
+
+    translate([x3, y1, 0])
+    rotate([0, 0, 180])
+    linear_extrude(proof_platform)
+    polygon([
+        [0, 0],
+        [x3, 0],
+        [x2, y1],
+        [x1, y1],
+    ]);
 }
 
 /**
@@ -237,7 +259,7 @@ module bottom_pass(with_hole) {
 module pass_pipe(with_hole) {
     difference() {
         cube([
-            pass_outer_radius * 2, 
+            pass_outer_radius * 2,
             pass_outer_radius * 2,
             1000
         ]);
@@ -280,12 +302,23 @@ module pass_pipe(with_hole) {
  * Group generations of the holding arm/bottom part of the holder.
  */
 module bottom_part() {
-    union() {
-        spool_arm();
-        
+    difference() {
+        union() {
+            spool_arm();
+
+            translate([holder_radius, (overall_width - side_margin * 2), 0])
+            rotate([0, -90, 90])
+            holder();
+        }
+
         translate([holder_radius, (overall_width - side_margin * 2), 0])
         rotate([0, -90, 90])
-        holder();
+        translate([0, 0, -1])
+        cylinder(
+            h=overall_width + 2,
+            r=holder_hole,
+            $fn=100
+        );
     }
 }
 
@@ -333,7 +366,7 @@ module holder() {
             r=holder_radius,
             $fn=100
         );
-        
+
         cylinder(
             h=stop_radius * tan(stop_angle),
             r1=stop_radius,
@@ -377,24 +410,102 @@ module clip() {
  * adjusted to the table to hold in place.
  */
 module clip_base() {
-    union() {
+    difference() {
+        union() {
+            cube([
+                overall_width,
+                bottom_arm_length + side_thickness,
+                bottom_arm_thickness
+            ]);
+
+            translate([0, 0, bottom_arm_thickness + table_thickness])
+            cube([
+                overall_width,
+                top_arm_length + side_thickness,
+                top_arm_thickness
+            ]);
+
+            cube([
+                overall_width,
+                side_thickness,
+                bottom_arm_thickness + table_thickness + top_arm_thickness
+            ]);
+        }
+
+        translate([
+            0,
+            (top_arm_length + side_thickness - (top_arm_thickness / 2)),
+            (bottom_arm_thickness + table_thickness + top_arm_thickness - (top_arm_thickness / 2))
+        ])
+        top_clip_filet();
+
+        translate([
+            0,
+            (top_arm_length + side_thickness - (top_arm_thickness / 2)),
+            (bottom_arm_thickness + table_thickness + top_arm_thickness - (top_arm_thickness / 2))
+        ])
+        rotate([270, 0, 0])
+        top_clip_filet();
+
+        translate([
+            0,
+            (bottom_arm_length + side_thickness - (bottom_arm_thickness / 2)),
+            (bottom_arm_thickness / 2)
+        ])
+        bottom_clip_filet();
+
+        translate([
+            0,
+            (bottom_arm_length + side_thickness - (bottom_arm_thickness / 2)),
+            (bottom_arm_thickness / 2)
+        ])
+        rotate([270, 0, 0])
+        bottom_clip_filet();
+    }
+}
+
+/**
+ * A "mask" to round up the top of the clip with a filet. This has a double
+ * purpose: make it easier to insert the holder onto a table and reduce warping
+ * effects on those relatively warping-prone parts of the model.
+ */
+module top_clip_filet() {
+    rotate([90, 0, 90])
+    difference() {
+        translate([0, 0, -1])
         cube([
-            overall_width, 
-            bottom_arm_length + side_thickness,
-            bottom_arm_thickness
+            (top_arm_thickness / 2) + 1,
+            (top_arm_thickness / 2) + 1,
+            overall_width + 2
         ]);
 
-        translate([0, 0, bottom_arm_thickness + table_thickness])
+        translate([0, 0, -2])
+        cylinder(
+            h=overall_width + 4,
+            r=(top_arm_thickness / 2),
+            $fn=100
+        );
+    }
+}
+
+/**
+ * Same as top_clip_filet() but for the bottom
+ */
+module bottom_clip_filet() {
+    rotate([90, 0, 90])
+    difference() {
+        translate([0, 0, -1])
         cube([
-            overall_width, 
-            top_arm_length + side_thickness, 
-            top_arm_thickness
+            (bottom_arm_thickness / 2) + 1,
+            (bottom_arm_thickness / 2) + 1,
+            overall_width + 2
         ]);
 
-        cube([
-            overall_width,
-            side_thickness,
-            bottom_arm_thickness + table_thickness + top_arm_thickness
-        ]);
+        translate([0, 0, -2])
+        cylinder(
+            h=overall_width + 4,
+            r=(bottom_arm_thickness / 2),
+            $fn=100
+        );
     }
 }
